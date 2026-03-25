@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>殺手數獨 - 鼠尾草綠完整版</title>
+    <style>
+        /* =========================================
+           1. 全局變量與色彩設定 (鼠尾草綠系)
+           ========================================= */
+        :root {
+            --bg-color: #FAFAFA;
+            --text-main: #3A4035;
+            --text-light: #7A8572;
+            
+            --sage-green: #A3B18A;
+            --sage-green-light: #E8EBE4;
+            --sage-green-dark: #7C8F66;
+            
+            --board-line: #2B3026;
+            --cell-line: #C5CCC0;
+            --cage-line: #7A8771;
+            
+            --cell-bg: #FFFFFF;
+            --selected-bg: #C9D4B8;
+            --same-num-bg: #F2F5EF;
+            
+            --error-color: #D9534F;
+            --note-color: #6A7562;
+        }
+
+        /* =========================================
+           2. 基礎排版
+           ========================================= */
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; user-select: none; }
+        body { background-color: var(--bg-color); color: var(--text-main); display: flex; justify-content: center; align-items: flex-start; min-height: 100vh; padding: 15px; }
+        .app-container { width: 100%; max-width: 500px; display: flex; flex-direction: column; gap: 20px; }
+
+        /* =========================================
+           3. 頂部資訊欄
+           ========================================= */
+        header { display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem; color: var(--text-light); font-weight: 500; }
+        .header-item { display: flex; flex-direction: column; align-items: center; }
+        .header-item.left { align-items: flex-start; }
+        .header-item.right { align-items: flex-end; }
+        .header-value { font-size: 1.1rem; color: var(--text-main); font-weight: bold; margin-top: 4px; display: flex; align-items: center; gap: 5px; }
+        
+        select.difficulty-select { font-size: 1rem; font-weight: bold; color: var(--text-main); border: none; background: transparent; cursor: pointer; outline: none; }
+        .pause-btn { background: var(--sage-green-light); border: none; border-radius: 50%; width: 24px; height: 24px; display: flex; justify-content: center; align-items: center; color: var(--text-main); cursor: pointer; }
+
+        /* 新增：外框容器 */
+        .board-container { width: 100%; position: relative; }
+
+        /* 浮動遮罩 (Game Over / 暫停) */
+        .overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(250,250,250,0.9); display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 100; border-radius: 8px; }
+        .overlay.active { display: flex; }
+        .overlay h2 { margin-bottom: 10px; color: var(--text-main); }
+        .overlay button { padding: 10px 20px; background: var(--sage-green); color: white; border: none; border-radius: 20px; font-size: 1rem; cursor: pointer; }
+
+        /* =========================================
+           4. 遊戲盤面
+           ========================================= */
+        .board-wrapper { width: 100%; aspect-ratio: 1 / 1; border: 3px solid var(--board-line); background-color: var(--board-line); display: grid; grid-template-columns: repeat(9, 1fr); grid-template-rows: repeat(9, 1fr); gap: 1px; }
+        .cell { background-color: var(--cell-bg); position: relative; display: flex; justify-content: center; align-items: center; font-size: 2rem; font-weight: 400; color: var(--text-main); cursor: pointer; transition: background-color 0.1s; }
+        
+        .cell:nth-child(3n) { border-right: 2px solid var(--board-line); }
+        .cell:nth-child(9n) { border-right: none; }
+        .cell:nth-child(n+19):nth-child(-n+27), .cell:nth-child(n+46):nth-child(-n+54) { border-bottom: 2px solid var(--board-line); }
+
+        .cell.related { background-color: var(--sage-green-light); }
+        .cell.selected { background-color: var(--selected-bg) !important; }
+        .cell.same-number { background-color: var(--same-num-bg); }
+        .cell.error { color: var(--error-color); background-color: #FDE8E8 !important; }
+        
+        .cell.given { font-weight: 700; color: #21261D; }
+        .cell:not(.given) .large-value { color: #5A6652; }
+
+        .cell.cage-top::before { content: ''; position: absolute; top: 1px; left: 1px; right: 1px; border-top: 2px dashed var(--cage-line); pointer-events: none; }
+        .cell.cage-bottom::after { content: ''; position: absolute; bottom: 1px; left: 1px; right: 1px; border-bottom: 2px dashed var(--cage-line); pointer-events: none; }
+        .cell.cage-left .cage-border-left { position: absolute; top: 1px; bottom: 1px; left: 1px; border-left: 2px dashed var(--cage-line); pointer-events: none; }
+        .cell.cage-right .cage-border-right { position: absolute; top: 1px; bottom: 1px; right: 1px; border-right: 2px dashed var(--cage-line); pointer-events: none; }
+
+        .cage-sum { position: absolute; top: 2px; left: 3px; font-size: 0.65rem; color: var(--text-main); font-weight: bold; line-height: 1; z-index: 2; }
+
+        .notes-grid { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); width: 100%; height: 100%; padding: 2px; }
+        .note-num { display: flex; justify-content: center; align-items: center; font-size: 0.7rem; color: var(--note-color); line-height: 1; }
+
+        /* =========================================
+           5. 按鈕與鍵盤
+           ========================================= */
+        .controls { display: flex; justify-content: space-around; padding: 10px 0; }
+        .control-btn { display: flex; flex-direction: column; align-items: center; gap: 8px; background: none; border: none; cursor: pointer; color: var(--text-main); }
+        .control-icon { width: 50px; height: 50px; border-radius: 50%; background-color: var(--sage-green-light); display: flex; justify-content: center; align-items: center; font-size: 1.3rem; transition: all 0.2s; position: relative; }
+        .control-btn:active .control-icon { background-color: var(--sage-green); transform: scale(0.95); }
+        .control-label { font-size: 0.8rem; font-weight: 500; }
+        .control-btn.active .control-icon { background-color: var(--sage-green); color: white; }
+        .badge { position: absolute; top: -2px; right: -2px; background-color: var(--text-light); color: white; font-size: 0.6rem; padding: 2px 6px; border-radius: 10px; font-weight: bold; }
+        .control-btn.active .badge { background-color: var(--text-main); content: "ON"; }
+
+        .numpad { display: grid; grid-template-columns: repeat(9, 1fr); gap: 5px; width: 100%; }
+        .num-btn { aspect-ratio: 1 / 1.2; background-color: transparent; border: none; border-radius: 8px; font-size: 1.8rem; color: var(--text-main); cursor: pointer; transition: background-color 0.1s; }
+        .num-btn:active { background-color: var(--sage-green-light); }
+
+        @media (max-width: 400px) { .cell { font-size: 1.5rem; } .num-btn { font-size: 1.5rem; } .control-icon { width: 45px; height: 45px; font-size: 1.1rem; } }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <header>
+        <div class="header-item left">
+            <span>難度</span>
+            <div class="header-value">
+                <select id="difficulty-select" class="difficulty-select">
+                    <option value="easy">簡單</option>
+                    <option value="medium">中等</option>
+                    <option value="hard">困難</option>
+                </select>
+            </div>
+        </div>
+        <div class="header-item">
+            <span>錯誤</span>
+            <div class="header-value error-text" id="mistake-counter">0/5</div>
+        </div>
+        <div class="header-item right">
+            <span>時間</span>
+            <div class="header-value">
+                <span id="timer-display">00:00</span>
+                <button class="pause-btn" id="btn-pause">⏸</button>
+            </div>
+        </div>
+    </header>
+
+    <div class="board-container">
+        <main class="board-wrapper" id="board">
+            <!-- 格子生成區 (現在裡面只會有 81 個純淨的格子) -->
+        </main>
+        <!-- 遮罩層移到網格外層，不再影響 CSS 粗線的計算 -->
+        <div class="overlay" id="game-overlay">
+            <h2 id="overlay-msg">遊戲暫停</h2>
+            <button id="overlay-btn">繼續</button>
+        </div>
+    </div>
+
+    <div class="controls">
+        <button class="control-btn" id="btn-undo"><div class="control-icon">↺</div><span class="control-label">復原</span></button>
+        <button class="control-btn" id="btn-erase"><div class="control-icon">⌫</div><span class="control-label">擦除</span></button>
+        <button class="control-btn" id="btn-note"><div class="control-icon">✎<div class="badge" id="note-badge">OFF</div></div><span class="control-label">筆記</span></button>
+        <button class="control-btn" id="btn-newgame"><div class="control-icon">✦</div><span class="control-label">新局</span></button>
+    </div>
+
+    <div class="numpad" id="numpad">
+        <button class="num-btn">1</button><button class="num-btn">2</button><button class="num-btn">3</button>
+        <button class="num-btn">4</button><button class="num-btn">5</button><button class="num-btn">6</button>
+        <button class="num-btn">7</button><button class="num-btn">8</button><button class="num-btn">9</button>
+    </div>
+</div>
+
+<script>
+    /* =========================================
+       1. 狀態管理
+       ========================================= */
+    let selectedCellIndex = null;
+    let isNoteMode = false;
+    let mistakes = 0;
+    const MAX_MISTAKES = 5;
+    
+    let boardState = []; // [{ value, notes, cageId, isGiven, isError }]
+    let history = [];
+    let solvedBoard = []; // 完美的解答盤面
+    let currentCages = []; // { id, sum, cells: [] }
+
+    // 計時器
+    let timerInterval = null;
+    let secondsElapsed = 0;
+    let isPaused = false;
+
+    /* =========================================
+       2. 核心演算法：生成數獨與 Cages
+       ========================================= */
+    
+    // 生成完整的 9x9 解答盤 (回溯法)
+    function generateSolvedBoard() {
+        let board = Array(81).fill(0);
+        const nums = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+        
+        function shuffle(arr) {
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
+        }
+
+        function isValid(b, index, val) {
+            let row = Math.floor(index / 9);
+            let col = index % 9;
+            let startRow = Math.floor(row / 3) * 3;
+            let startCol = Math.floor(col / 3) * 3;
+
+            for (let i = 0; i < 9; i++) {
+                if (b[row * 9 + i] === val) return false; // 查行
+                if (b[i * 9 + col] === val) return false; // 查列
+                if (b[(startRow + Math.floor(i / 3)) * 9 + (startCol + i % 3)] === val) return false; // 查九宮格
+            }
+            return true;
+        }
+
+        function solve() {
+            let empty = board.indexOf(0);
+            if (empty === -1) return true;
+            
+            let shuffledNums = shuffle([...nums]);
+            for (let n of shuffledNums) {
+                if (isValid(board, empty, n)) {
+                    board[empty] = n;
+                    if (solve()) return true;
+                    board[empty] = 0; // 回溯
+                }
+            }
+            return false;
+        }
+
+        solve();
+        return board;
+    }
+
+    // 隨機生成 Cages (簡單擴張法，加入難度控制)
+    function generateCagesData(solvedBoard, difficulty) {
+        let cages = [];
+        let unassigned = new Set(Array.from({length: 81}, (_, i) => i));
+        let cageId = 1;
+
+        function getNeighbors(index) {
+            let n = [];
+            let row = Math.floor(index / 9);
+            let col = index % 9;
+            if (row > 0) n.push(index - 9);
+            if (row < 8) n.push(index + 9);
+            if (col > 0) n.push(index - 1);
+            if (col < 8) n.push(index + 1);
+            return n;
+        }
+
+        while(unassigned.size > 0) {
+            let startCell = Array.from(unassigned)[0];
+            
+            // 根據難度設定最大格數
+            let maxSize = 5; // 困難: 1-5格
+            if (difficulty === 'easy') maxSize = 3; // 簡單: 1-3格
+            else if (difficulty === 'medium') maxSize = 4; // 中等: 1-4格
+            
+            let targetSize = Math.floor(Math.random() * maxSize) + 1; // 隨機 1 到 maxSize 格
+            
+            let cageCells = [startCell];
+            unassigned.delete(startCell);
+
+            let current = startCell;
+            for (let i = 1; i < targetSize; i++) {
+                let neighbors = getNeighbors(current).filter(n => unassigned.has(n));
+                if (neighbors.length === 0) break;
+                
+                let next = neighbors[Math.floor(Math.random() * neighbors.length)];
+                cageCells.push(next);
+                unassigned.delete(next);
+                current = next; 
+            }
+
+            let sum = cageCells.reduce((acc, cellIndex) => acc + solvedBoard[cellIndex], 0);
+            cages.push({ id: cageId++, sum: sum, cells: cageCells.sort((a,b)=>a-b) });
+        }
+        return cages;
+    }
+
+    /* =========================================
+       3. 遊戲初始化
+       ========================================= */
+    const boardElement = document.getElementById('board');
+
+    function startNewGame() {
+        // 1. 重置狀態
+        history = [];
+        mistakes = 0;
+        document.getElementById('mistake-counter').innerText = `0/${MAX_MISTAKES}`;
+        document.getElementById('mistake-counter').style.color = '';
+        selectedCellIndex = null;
+        
+        // 2. 獲取當前選擇的難度
+        const difficulty = document.getElementById('difficulty-select').value;
+        
+        // 3. 生成底層數據 (將難度傳入 Cage 生成器)
+        solvedBoard = generateSolvedBoard();
+        currentCages = generateCagesData(solvedBoard, difficulty);
+        
+        // 4. 處理 Givens (預設數字)
+        let givenCount = 30; // 預設簡單
+        if (difficulty === 'medium') givenCount = 20;
+        if (difficulty === 'hard') givenCount = 10;
+
+        let givenIndices = new Set();
+        while(givenIndices.size < givenCount) {
+            givenIndices.add(Math.floor(Math.random() * 81));
+        }
+
+        // 4. 構建盤面狀態
+        boardState = Array.from({ length: 81 }, (_, i) => {
+            let cage = currentCages.find(c => c.cells.includes(i));
+            let isGiven = givenIndices.has(i);
+            return {
+                value: isGiven ? solvedBoard[i] : null,
+                notes: [],
+                cageId: cage.id,
+                isGiven: isGiven,
+                isError: false
+            };
+        });
+
+        // 5. 渲染 UI
+        initBoardUI();
+        resetTimer();
+        startTimer();
+    }
+
+    function initBoardUI() {
+        // 遮罩已經移出，現在可以直接清空整個盤面
+        boardElement.innerHTML = '';
+        
+        for (let i = 0; i < 81; i++) {
+            const cell = document.createElement('div');
+            cell.className = 'cell';
+            cell.dataset.index = i;
+            
+            const borderLeft = document.createElement('div');
+            borderLeft.className = 'cage-border-left';
+            const borderRight = document.createElement('div');
+            borderRight.className = 'cage-border-right';
+            cell.appendChild(borderLeft);
+            cell.appendChild(borderRight);
+
+            applyCageBorders(cell, i);
+            cell.addEventListener('click', () => {
+                if(!isPaused) selectCell(i);
+            });
+            
+            boardElement.appendChild(cell);
+        }
+        renderBoard();
+    }
+
+    function applyCageBorders(cellElement, index) {
+        const row = Math.floor(index / 9);
+        const col = index % 9;
+        const currentCageId = boardState[index].cageId;
+        const cageData = currentCages.find(c => c.id === currentCageId);
+
+        if (cageData && cageData.cells[0] === index) {
+            const sumSpan = document.createElement('span');
+            sumSpan.className = 'cage-sum';
+            sumSpan.innerText = cageData.sum;
+            cellElement.appendChild(sumSpan);
+        }
+
+        const isTopSame = row > 0 && boardState[index - 9].cageId === currentCageId;
+        const isBottomSame = row < 8 && boardState[index + 9].cageId === currentCageId;
+        const isLeftSame = col > 0 && boardState[index - 1].cageId === currentCageId;
+        const isRightSame = col < 8 && boardState[index + 1].cageId === currentCageId;
+
+        if (!isTopSame) cellElement.classList.add('cage-top');
+        if (!isBottomSame) cellElement.classList.add('cage-bottom');
+        if (!isLeftSame) cellElement.classList.add('cage-left');
+        if (!isRightSame) cellElement.classList.add('cage-right');
+    }
+
+    /* =========================================
+       4. 互動邏輯與驗證
+       ========================================= */
+    function selectCell(index) {
+        selectedCellIndex = index;
+        renderBoard();
+    }
+
+    function renderBoard() {
+        const cells = document.querySelectorAll('.cell');
+        let selectedRow = selectedCellIndex !== null ? Math.floor(selectedCellIndex / 9) : null;
+        let selectedCol = selectedCellIndex !== null ? selectedCellIndex % 9 : null;
+        let selectedBoxRow = selectedRow !== null ? Math.floor(selectedRow / 3) : null;
+        let selectedBoxCol = selectedCol !== null ? Math.floor(selectedCol / 3) : null;
+
+        cells.forEach((cell, i) => {
+            cell.classList.remove('selected', 'same-number', 'error', 'related', 'given');
+            Array.from(cell.childNodes).forEach(node => {
+                if (node.nodeType === 3 || (node.classList && (node.classList.contains('notes-grid') || node.classList.contains('large-value')))) {
+                    node.remove();
+                }
+            });
+
+            const state = boardState[i];
+
+            if (state.isGiven) cell.classList.add('given');
+            if (state.isError) cell.classList.add('error');
+
+            if (state.value !== null) {
+                const valSpan = document.createElement('span');
+                valSpan.className = 'large-value';
+                valSpan.innerText = state.value;
+                cell.appendChild(valSpan);
+            } else if (state.notes.length > 0) {
+                const notesGrid = document.createElement('div');
+                notesGrid.className = 'notes-grid';
+                for (let n = 1; n <= 9; n++) {
+                    const noteNum = document.createElement('div');
+                    noteNum.className = 'note-num';
+                    if (state.notes.includes(n)) noteNum.innerText = n;
+                    notesGrid.appendChild(noteNum);
+                }
+                cell.appendChild(notesGrid);
+            }
+
+            if (selectedCellIndex !== null) {
+                let r = Math.floor(i / 9);
+                let c = i % 9;
+                if (r === selectedRow || c === selectedCol || (Math.floor(r/3) === selectedBoxRow && Math.floor(c/3) === selectedBoxCol)) {
+                    cell.classList.add('related');
+                }
+            }
+
+            if (selectedCellIndex !== null && state.value !== null && state.value === boardState[selectedCellIndex].value) {
+                cell.classList.add('same-number');
+            }
+
+            if (i === selectedCellIndex) cell.classList.add('selected');
+        });
+    }
+
+    function saveHistory() { history.push(JSON.parse(JSON.stringify(boardState))); }
+
+    function inputNumber(num) {
+        if (selectedCellIndex === null || boardState[selectedCellIndex].isGiven || isPaused) return;
+        
+        saveHistory();
+        const state = boardState[selectedCellIndex];
+
+        if (isNoteMode) {
+            if (state.value !== null) { state.value = null; state.isError = false; }
+            const noteIndex = state.notes.indexOf(num);
+            if (noteIndex > -1) state.notes.splice(noteIndex, 1);
+            else { state.notes.push(num); state.notes.sort(); }
+        } else {
+            state.value = num;
+            state.notes = [];
+            validateBoard(); // 輸入數字後觸發全面驗證
+        }
+        renderBoard();
+        checkWin();
+    }
+
+    // 真正的嚴格錯誤檢查邏輯
+    function validateBoard() {
+        // 先重置所有非 given 格子的 error 狀態
+        boardState.forEach(cell => { if(!cell.isGiven) cell.isError = false; });
+        let hasNewError = false;
+
+        for (let i = 0; i < 81; i++) {
+            if (boardState[i].value === null || boardState[i].isGiven) continue;
+            let val = boardState[i].value;
+            let isCellError = false;
+
+            // 1. 檢查行、列、九宮格
+            let r = Math.floor(i / 9);
+            let c = i % 9;
+            for (let j = 0; j < 81; j++) {
+                if (i === j || boardState[j].value === null) continue;
+                let jr = Math.floor(j / 9);
+                let jc = j % 9;
+                if ((r === jr || c === jc || (Math.floor(r/3) === Math.floor(jr/3) && Math.floor(c/3) === Math.floor(jc/3))) && boardState[j].value === val) {
+                    isCellError = true;
+                }
+            }
+
+            // 2. 檢查 Cage 邏輯 (不能重複 ＆ 總和)
+            const cageData = currentCages.find(cg => cg.id === boardState[i].cageId);
+            let cageSum = 0;
+            let isCageFull = true;
+            let cageValues = new Set();
+
+            cageData.cells.forEach(idx => {
+                let cellVal = boardState[idx].value;
+                if (cellVal !== null) {
+                    cageSum += cellVal;
+                    // 同一個 Cage 內有重複數字 -> 錯誤
+                    if (idx !== i && cellVal === val) isCellError = true;
+                } else {
+                    isCageFull = false;
+                }
+            });
+
+            // 總和檢查：如果填滿了但不等如總和，或是還沒填滿但已經超過總和
+            if (isCageFull && cageSum !== cageData.sum) isCellError = true;
+            if (!isCageFull && cageSum >= cageData.sum) isCellError = true;
+
+            if (isCellError) {
+                boardState[i].isError = true;
+                hasNewError = true;
+            }
+        }
+
+        if (hasNewError) addMistake();
+    }
+
+    function addMistake() {
+        mistakes++;
+        const mistakeUI = document.getElementById('mistake-counter');
+        mistakeUI.innerText = `${mistakes}/${MAX_MISTAKES}`;
+        if(mistakes >= MAX_MISTAKES) {
+            mistakeUI.style.color = 'var(--error-color)';
+            showOverlay("挑戰失敗！錯誤過多", "重試");
+        }
+    }
+
+    function checkWin() {
+        let isFull = boardState.every(cell => cell.value !== null);
+        let hasError = boardState.some(cell => cell.isError);
+        if (isFull && !hasError) {
+            pauseTimer();
+            showOverlay(`🎉 恭喜通關！耗時 ${document.getElementById('timer-display').innerText}`, "再來一局");
+        }
+    }
+
+    /* =========================================
+       5. 計時器與遮罩控制
+       ========================================= */
+    function formatTime(sec) {
+        let m = Math.floor(sec / 60).toString().padStart(2, '0');
+        let s = (sec % 60).toString().padStart(2, '0');
+        return `${m}:${s}`;
+    }
+
+    function updateTimerDisplay() {
+        document.getElementById('timer-display').innerText = formatTime(secondsElapsed);
+    }
+
+    function startTimer() {
+        if(timerInterval) clearInterval(timerInterval);
+        isPaused = false;
+        timerInterval = setInterval(() => {
+            secondsElapsed++;
+            updateTimerDisplay();
+        }, 1000);
+    }
+
+    function pauseTimer() {
+        clearInterval(timerInterval);
+        isPaused = true;
+    }
+
+    function resetTimer() {
+        pauseTimer();
+        secondsElapsed = 0;
+        updateTimerDisplay();
+    }
+
+    const overlay = document.getElementById('game-overlay');
+    function showOverlay(msg, btnText) {
+        document.getElementById('overlay-msg').innerText = msg;
+        const btn = document.getElementById('overlay-btn');
+        btn.innerText = btnText;
+        overlay.classList.add('active');
+        pauseTimer();
+        
+        btn.onclick = () => {
+            overlay.classList.remove('active');
+            if(btnText === "繼續") {
+                startTimer();
+            } else {
+                startNewGame(); // 重試或再來一局
+            }
+        };
+    }
+
+    document.getElementById('btn-pause').addEventListener('click', () => {
+        showOverlay("遊戲暫停", "繼續");
+    });
+
+    /* =========================================
+       6. 事件監聽
+       ========================================= */
+    document.querySelectorAll('.num-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => inputNumber(parseInt(e.target.innerText)));
+    });
+
+    const btnNote = document.getElementById('btn-note');
+    const noteBadge = document.getElementById('note-badge');
+    btnNote.addEventListener('click', () => {
+        if(isPaused) return;
+        isNoteMode = !isNoteMode;
+        if (isNoteMode) { btnNote.classList.add('active'); noteBadge.innerText = 'ON'; }
+        else { btnNote.classList.remove('active'); noteBadge.innerText = 'OFF'; }
+    });
+
+    document.getElementById('btn-erase').addEventListener('click', () => {
+        if (selectedCellIndex !== null && !boardState[selectedCellIndex].isGiven && !isPaused) {
+            saveHistory();
+            boardState[selectedCellIndex].value = null;
+            boardState[selectedCellIndex].notes = [];
+            validateBoard(); // 擦除後重新驗證
+            renderBoard();
+        }
+    });
+
+    document.getElementById('btn-undo').addEventListener('click', () => {
+        if (history.length > 0 && !isPaused) {
+            boardState = history.pop();
+            renderBoard();
+        }
+    });
+
+    document.getElementById('btn-newgame').addEventListener('click', startNewGame);
+    document.getElementById('difficulty-select').addEventListener('change', startNewGame);
+
+    document.addEventListener('keydown', (e) => {
+        if(isPaused) return;
+        if (e.key >= '1' && e.key <= '9') inputNumber(parseInt(e.key));
+        else if (e.key === 'Backspace' || e.key === 'Delete') document.getElementById('btn-erase').click();
+    });
+
+    // 遊戲啟動！
+    startNewGame();
+
+</script>
+</body>
+</html>
