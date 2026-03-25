@@ -70,7 +70,7 @@
            4. 遊戲盤面
            ========================================= */
         .board-wrapper { width: 100%; aspect-ratio: 1 / 1; border: 3px solid var(--board-line); background-color: var(--board-line); display: grid; grid-template-columns: repeat(9, 1fr); grid-template-rows: repeat(9, 1fr); gap: 1px; }
-        .cell { background-color: var(--cell-bg); position: relative; display: flex; justify-content: center; align-items: center; font-size: 1.9 rem; font-weight: 400; color: var(--text-main); cursor: pointer; transition: background-color 0.1s; }
+        .cell { background-color: var(--cell-bg); position: relative; display: flex; justify-content: center; align-items: center; font-size: 2rem; font-weight: 400; color: var(--text-main); cursor: pointer; transition: background-color 0.1s; }
         
         .cell:nth-child(3n) { border-right: 2px solid var(--board-line); }
         .cell:nth-child(9n) { border-right: none; }
@@ -110,7 +110,7 @@
         .num-btn { aspect-ratio: 1 / 1.2; background-color: transparent; border: none; border-radius: 8px; font-size: 1.8rem; color: var(--text-main); cursor: pointer; transition: background-color 0.1s; }
         .num-btn:active { background-color: var(--sage-green-light); }
 
-        @media (max-width: 400px) { .cell { font-size: 1.8rem; } .num-btn { font-size: 1.5rem; } .control-icon { width: 45px; height: 45px; font-size: 1.1rem; } }
+        @media (max-width: 400px) { .cell { font-size: 2rem; } .num-btn { font-size: 1.5rem; } .control-icon { width: 45px; height: 45px; font-size: 1.1rem; } }
     </style>
 </head>
 <body>
